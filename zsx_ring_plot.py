@@ -1,6 +1,158 @@
+#!/usr/bin/env python
+# coding: utf-8
+
 import matplotlib.pyplot as plt
 import numpy as np
 import math
+
+
+# main
+def ring_plot(x_data_, r1=1, r2=0.8, color_list=None, exposure=None, epsilon=0.001,
+              alpha=None, x0=0, y0=0, zorder_ring=10, angle_fold_change=1, angle_start_change=0,
+              edge_open=False, lw=2, lc='white', zorder_edge=11, pie=None,
+              label=None, fs=15, fc='black', rotation=True, threshold=0.12,
+              show_value=False, show_percentage=False, number_threshold=0.2, fs2=15, fc2='black', zorder_label=12,
+              r_list=None, contour_ls='auto', figsize=None, xrange=None, contour_lc='grey', zorder_contour=1):
+    """
+    Draw a ring plot in a Cartesian coordinate system.
+    :param x_data_: listlike of floats, each corresponding to the central angle.
+    :param r1: float, outside radius of the ring.
+    :param r2: float, inside radius of the ring.
+    :param color_list: listlike of colors, each corresponding to 'x_data_', default 4 colors.
+    :param exposure: listlike of floats, each corresponding to 'x_data_', distance out of the center of the ring.
+    :param epsilon: Tthe smaller the value, the higher the accuracy of the drawing, default 0.001.
+    :param alpha: listlike of floats, each corresponding to 'color_list', transparency.
+    :param x0: float, center x-coordinate of the ring, default 0.
+    :param y0: float, center y-coordinate of the ring, default 0.
+    :param zorder_ring: zorder of the ring, default 10.
+    :param angle_fold_change: The overall zoomed-out magnification of the "ring",
+                              which is often used to create a ring plot with gaps.
+    :param angle_start_change: Drawing starting radian, default starting from radian 0 (unit vector is (1, 0)).
+    :param edge_open: drawing edge or not, default False.
+    :param lw: linewidth of the edge, default 2.
+    :param lc: linecolor of the edge, default 'white'.
+    :param zorder_edge: zorder of the edge, default 11.
+    :param pie: value of pie.
+    :param label: listlike of strings, each corresponding to 'x_data_', default None.
+    :param fs: label fontsize, default 15.
+    :param fc: label fontcolor, default 'black'.
+    :param rotation: label text rotation. True, False, and 'center' is allowed, default True.
+    :param threshold: threshold to control which label will be displayed
+                      if the correspondiong radian exceeds the threshold, default 0.12 (pie)
+    :param show_value: show the value or not, only effective when show_value=True, default False.
+    :param show_percentage: show value in percentage or true value, default False.
+    :param number_threshold: threshold to control which value will be displayed
+                             if the correspondiong radian exceeds the threshold,
+                             only effective when show_value=True, default 0.12 (pie)
+    :param fs: value fontsize, default 15.
+    :param fc: value fontcolor, default 'black'.
+    :param zorder_label: zorder of the labels and values, default 12.
+    :param r_list: contour lines‘ radius.
+    :param contour_ls: contour linestyle, default 'auto'.
+    :param figsize: max(figsize), default None.
+    :param xrange: xrange for contour, default None
+    :param contour_lc: contour linecolor, default 'grey'
+    :param zorder_contour: zorder of the contour, default 1.
+
+    :return: None
+    """
+    pie = np.pi if (pie is None) else pie
+
+    if angle_fold_change <= 0 or angle_fold_change > 1:
+        angle_fold_change = 1
+        print('Warning: angle_fold_change should in (0, 1], otherwise will be set as 1.')
+    x_angle, k = count_x(x_data_, angle_fold_change, angle_start_change, pie=pie)
+
+    alpha = [1] * len(x_angle) if (alpha is None) else [1] + list(alpha)
+    exposure = [0] * len(x_angle) if (exposure is None) else [0] + list(exposure)
+    if color_list is None:
+        color_list = [''] + ['lightpink', 'lightskyblue', 'wheat', 'mediumpurple'] * int(len(x_angle) // 4 + 1)
+    else:
+        color_list = [''] + list(color_list)
+
+    label = [''] + list(label) if (label is not None) else False
+
+    threshold_r_ = math.acos(r2 / r1)
+
+    for i in range(1, len(x_data_) + 1):
+        Control_center(x_angle, k, i, pie=pie, color_list=color_list, exposure=exposure, threshold_r=threshold_r_,
+                       epsilon=epsilon, r1=r1, r2=r2, alpha=alpha, x0=x0, y0=y0, zorder=zorder_ring)
+        if edge_open:
+            edge(x_angle, k, i, pie=pie, x0=x0, y0=y0, lw=lw, lc=lc, r1=r1, r2=r2, zorder=zorder_edge)
+
+        if label:
+            if x_angle[i] - x_angle[i - 1] > number_threshold * pie:
+                plot_label(x_angle, label, i, x_data_, pie=pie, exposure=exposure, x0=x0, y0=y0, fs=fs, fc=fc,
+                           rotation=rotation, threshold=threshold, r1=r1, r2=r2, show_value=show_value,
+                           show_percentage=show_percentage, fs2=fs2, fc2=fc2, zorder=zorder_label)
+            else:
+                plot_label(x_angle, label, i, x_data_, pie=pie, exposure=exposure, x0=x0, y0=y0, fs=fs, fc=fc,
+                           rotation=rotation, threshold=threshold, r1=r1, r2=r2, show_value=False,
+                           show_percentage=show_percentage, fs2=fs2, fc2=fc2, zorder=zorder_label)
+    if r_list is not None:
+        for r_ in r_list:
+            contour(r_, figsize=figsize, xrange=xrange, linestyle=contour_ls, color=contour_lc, zorder=zorder_contour)
+
+
+# for detailed plot
+def Control_center_auto(x_data_, i, pie=None, color_list=None, exposure=None,
+                        angle_fold_change=1, angle_start_change=0,
+                        epsilon=0.001, r1=1, r2=0.8, alpha=None, x0=0, y0=0, zorder=10):
+
+    pie = np.pi if (pie is None) else pie
+
+    x_angle, k = count_x(x_data_, angle_fold_change=angle_fold_change, angle_start_change=angle_start_change, pie=pie)
+
+    alpha = [1] * len(x_angle) if (alpha is None) else [1] + list(alpha)
+    exposure = [0] * len(x_angle) if (exposure is None) else [0] + list(exposure)
+    if color_list is None:
+        color_list = [''] + ['lightpink', 'lightskyblue', 'wheat', 'mediumpurple'] * int(len(x_angle) // 4 + 1)
+    else:
+        color_list = [''] + list(color_list)
+
+    # 1-#
+    if x_angle[i - 1] < pie * 0.5:
+        if x_angle[i] <= pie * 0.5:
+            pi_1_1(x_angle, k, i, exposure, epsilon, color_list, r1, r2, alpha, x0, y0, zorder)
+        elif x_angle[i] <= pie:
+            pi_1_2(x_angle, k, i, exposure, epsilon, color_list, r1, r2, alpha, x0, y0, zorder)
+        elif x_angle[i] <= pie + threshold_r:
+            pi_1_3_a(x_angle, k, i, exposure, epsilon, color_list, r1, r2, alpha, x0, y0, zorder)
+        elif x_angle[i] <= pie * 1.5:
+            pi_1_3_b(x_angle, k, i, exposure, epsilon, color_list, r1, r2, alpha, x0, y0, zorder)
+        else:
+            pi_1_4(x_angle, k, i, exposure, epsilon, color_list, r1, r2, alpha, x0, y0, zorder)
+
+    # 2-#
+    elif x_angle[i - 1] < pie:
+        if x_angle[i] <= pie:
+            pi_2_2(x_angle, k, i, exposure, epsilon, color_list, r1, r2, alpha, x0, y0, zorder)
+        elif x_angle[i] <= pie + threshold_r:
+            if x_angle[i - 1] < pie - threshold_r:
+                pi_2_a_3_a(x_angle, k, i, exposure, epsilon, color_list, r1, r2, alpha, x0, y0, zorder)
+            else:
+                pi_2_b_3_a(x_angle, k, i, exposure, epsilon, color_list, r1, r2, alpha, x0, y0, zorder)
+        elif x_angle[i] <= pie * 1.5:
+            if x_angle[i - 1] < pie - threshold_r:
+                pi_2_a_3_b(x_angle, k, i, exposure, epsilon, color_list, r1, r2, alpha, x0, y0, zorder)
+            else:
+                pi_2_b_3_b(x_angle, k, i, exposure, epsilon, color_list, r1, r2, alpha, x0, y0, zorder)
+        else:
+            if x_angle[i - 1] < pie - threshold_r:
+                pi_2_a_4(x_angle, k, i, exposure, epsilon, color_list, r1, r2, alpha, x0, y0, zorder)
+            else:
+                pi_2_b_4(x_angle, k, i, exposure, epsilon, color_list, r1, r2, alpha, x0, y0, zorder)
+
+    # 3-#
+    elif x_angle[i - 1] < pie * 1.5:
+        if x_angle[i] <= pie * 1.5:
+            pi_3_3(x_angle, k, i, exposure, epsilon, color_list, r1, r2, alpha, x0, y0, zorder)
+        else:
+            pi_3_4(x_angle, k, i, exposure, epsilon, color_list, r1, r2, alpha, x0, y0, zorder)
+
+    # 4-#
+    else:
+        pi_4_4(x_angle, k, i, exposure, epsilon, color_list, r1, r2, alpha, x0, y0, zorder)
 
 
 # 计算所需参数
@@ -222,7 +374,7 @@ def plot_label(x_angle, label, i, x_data_, pie, exposure, x0, y0, fs, fc, rotati
                  verticalalignment=location[0], horizontalalignment=location[1], zorder=zorder)
 
 
-# 绘制等高线
+# Draw contour lines
 def contour(r1, figsize=None, xrange=None, linestyle='auto', color='grey', zorder=1):
     if figsize is None and linestyle == 'auto':
         figsize = 6
@@ -1053,110 +1205,6 @@ def Control_center(x_angle, k, i, threshold_r, pie, color_list=False, exposure=F
 
     # 1-#
     elif x_angle[i - 1] < pie * 0.5:
-        if x_angle[i] <= pie * 0.5:
-            pi_1_1(x_angle, k, i, exposure, epsilon, color_list, r1, r2, alpha, x0, y0, zorder)
-        elif x_angle[i] <= pie:
-            pi_1_2(x_angle, k, i, exposure, epsilon, color_list, r1, r2, alpha, x0, y0, zorder)
-        elif x_angle[i] <= pie + threshold_r:
-            pi_1_3_a(x_angle, k, i, exposure, epsilon, color_list, r1, r2, alpha, x0, y0, zorder)
-        elif x_angle[i] <= pie * 1.5:
-            pi_1_3_b(x_angle, k, i, exposure, epsilon, color_list, r1, r2, alpha, x0, y0, zorder)
-        else:
-            pi_1_4(x_angle, k, i, exposure, epsilon, color_list, r1, r2, alpha, x0, y0, zorder)
-
-    # 2-#
-    elif x_angle[i - 1] < pie:
-        if x_angle[i] <= pie:
-            pi_2_2(x_angle, k, i, exposure, epsilon, color_list, r1, r2, alpha, x0, y0, zorder)
-        elif x_angle[i] <= pie + threshold_r:
-            if x_angle[i - 1] < pie - threshold_r:
-                pi_2_a_3_a(x_angle, k, i, exposure, epsilon, color_list, r1, r2, alpha, x0, y0, zorder)
-            else:
-                pi_2_b_3_a(x_angle, k, i, exposure, epsilon, color_list, r1, r2, alpha, x0, y0, zorder)
-        elif x_angle[i] <= pie * 1.5:
-            if x_angle[i - 1] < pie - threshold_r:
-                pi_2_a_3_b(x_angle, k, i, exposure, epsilon, color_list, r1, r2, alpha, x0, y0, zorder)
-            else:
-                pi_2_b_3_b(x_angle, k, i, exposure, epsilon, color_list, r1, r2, alpha, x0, y0, zorder)
-        else:
-            if x_angle[i - 1] < pie - threshold_r:
-                pi_2_a_4(x_angle, k, i, exposure, epsilon, color_list, r1, r2, alpha, x0, y0, zorder)
-            else:
-                pi_2_b_4(x_angle, k, i, exposure, epsilon, color_list, r1, r2, alpha, x0, y0, zorder)
-
-    # 3-#
-    elif x_angle[i - 1] < pie * 1.5:
-        if x_angle[i] <= pie * 1.5:
-            pi_3_3(x_angle, k, i, exposure, epsilon, color_list, r1, r2, alpha, x0, y0, zorder)
-        else:
-            pi_3_4(x_angle, k, i, exposure, epsilon, color_list, r1, r2, alpha, x0, y0, zorder)
-
-    # 4-#
-    else:
-        pi_4_4(x_angle, k, i, exposure, epsilon, color_list, r1, r2, alpha, x0, y0, zorder)
-
-
-# 主程序
-def ring_plot(x_data_, pie=None, color_list=None, exposure=None, epsilon=0.001,
-              r1=1, r2=0.8, alpha=None, x0=0, y0=0, zorder_ring=10, angle_fold_change=1, angle_start_change=0,
-              edge_open=False, lw=2, lc='white', zorder_edge=11,
-              label=None, fs=15, fc='black', rotation=True, threshold=0.12,
-              show_value=False, show_percentage=False, number_threshold=0.2, fs2=15, fc2='black', zorder_label=12,
-              r_list=None, figsize=None, xrange=None, contour_ls='auto', contour_lc='grey', zorder_contour=1):
-
-    pie = np.pi if (label is None) else pie
-
-    x_angle, k = count_x(x_data_, angle_fold_change, angle_start_change, pie=pie)
-
-    alpha = [1] * len(x_angle) if (alpha is None) else [1] + list(alpha)
-    exposure = [0] * len(x_angle) if (exposure is None) else [0] + list(exposure)
-    if color_list is None:
-        color_list = [''] + ['lightpink', 'lightskyblue', 'wheat', 'mediumpurple'] * int(len(x_angle) // 4 + 1)
-    else:
-        color_list = [''] + list(color_list)
-
-    label = [''] + list(label) if (label is not None) else False
-
-    threshold_r_ = math.acos(r2 / r1)
-
-    for i in range(1, len(x_data_) + 1):
-        Control_center(x_angle, k, i, pie=pie, color_list=color_list, exposure=exposure, threshold_r=threshold_r_,
-                       epsilon=epsilon, r1=r1, r2=r2, alpha=alpha, x0=x0, y0=y0, zorder=zorder_ring)
-        if edge_open:
-            edge(x_angle, k, i, pie=pie, x0=x0, y0=y0, lw=lw, lc=lc, r1=r1, r2=r2, zorder=zorder_edge)
-
-        if label:
-            if x_angle[i] - x_angle[i - 1] > number_threshold * pie:
-                plot_label(x_angle, label, i, x_data_, pie=pie, exposure=exposure, x0=x0, y0=y0, fs=fs, fc=fc,
-                           rotation=rotation, threshold=threshold, r1=r1, r2=r2, show_value=show_value,
-                           show_percentage=show_percentage, fs2=fs2, fc2=fc2, zorder=zorder_label)
-            else:
-                plot_label(x_angle, label, i, x_data_, pie=pie, exposure=exposure, x0=x0, y0=y0, fs=fs, fc=fc,
-                           rotation=rotation, threshold=threshold, r1=r1, r2=r2, show_value=False,
-                           show_percentage=show_percentage, fs2=fs2, fc2=fc2, zorder=zorder_label)
-    if r_list is not None:
-        for r_ in r_list:
-            contour(r_, figsize=figsize, xrange=xrange, linestyle=contour_ls, color=contour_lc, zorder=zorder_contour)
-
-
-# for detailed plot
-def Control_center_auto(x_data_, i, pie=None, color_list=None, exposure=None,
-                        angle_fold_change=1, angle_start_change=0,
-                        epsilon=0.001, r1=1, r2=0.8, alpha=None, x0=0, y0=0, zorder=10):
-
-    pie = np.pi if (pie is None) else pie
-
-    x_angle, k = count_x(x_data_, angle_fold_change=angle_fold_change, angle_start_change=angle_start_change, pie=pie)
-
-    alpha = [1] * len(x_angle) if (alpha is None) else [1] + list(alpha)
-    exposure = [0] * len(x_angle) if (exposure is None) else [0] + list(exposure)
-    if color_list is None:
-        color_list = [''] + ['lightpink', 'lightskyblue', 'wheat', 'mediumpurple'] * int(len(x_angle) // 4 + 1)
-    else:
-        color_list = [''] + list(color_list)
-
-    # 1-#
-    if x_angle[i - 1] < pie * 0.5:
         if x_angle[i] <= pie * 0.5:
             pi_1_1(x_angle, k, i, exposure, epsilon, color_list, r1, r2, alpha, x0, y0, zorder)
         elif x_angle[i] <= pie:
